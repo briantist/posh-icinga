@@ -81,13 +81,14 @@ param()
         {
             return true;
         }
+
         public static void OverrideValidation()
         {
             funcs.Push(ServicePointManager.ServerCertificateValidationCallback);
             ServicePointManager.ServerCertificateValidationCallback =
                 OnValidateCertificate;
-            //ServicePointManager.Expect100Continue = true;
         }
+
         public static void RestoreValidation()
         {
             if (funcs.Count > 0) {
@@ -96,6 +97,70 @@ param()
         }
     }
 "@
+}
+
+function JoinUri {
+[CmdletBinding(DefaultParameterSetName='AllAtOnce')]
+param(
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline,
+        ParameterSetName='LTR'
+    )]
+    [ValidateNotNullOrEmpty()]
+    [System.Uri]
+    $Uri ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='LTR'
+    )]
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline,
+        ParameterSetName='AllAtOnce'
+    )]
+    [ValidateNotNullOrEmpty()]
+    [String[]]
+    $ChildPath ,
+
+    [Parameter()]
+    [ValidateNotNullOrEmpty()]
+    [String]
+    $Delimeter = '/'
+)
+
+    Begin {
+        $result = [String]::Empty
+    }
+
+    Process {
+        switch ($PSCmdlet.ParameterSetName) {
+            'LTR' {
+                $result = $Uri.ToString()
+                foreach ($component in $ChildPath) {
+                    $result = "{0}$Delimeter{1}" -f $result.TrimEnd($Delimeter), $component.TrimStart($Delimeter)
+                }
+                $result
+            }
+
+            'AllAtOnce' {
+                foreach($component in $ChildPath) {
+                    if (!$result) {
+                        $result = $component
+                    } else {
+                        $result = "{0}$Delimeter{1}" -f $result.TrimEnd($Delimeter), $component.TrimStart($Delimeter)
+                    }
+                }
+            }
+        }
+    }
+
+    End {
+        if ($PSCmdlet.ParameterSetName -eq 'AllAtOnce') {
+            $result
+        }
+    }
 }
 
 AddIcingaCmdEnum
