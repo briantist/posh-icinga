@@ -33,7 +33,7 @@ param(
 )
 
     $pre = @"
-public enum Icinga
+public enum IcingaCommand
 {
 
 "@
@@ -162,6 +162,47 @@ param(
         }
     }
 }
+
+function NewNameValueCollection {
+[CmdletBinding()]
+param(
+    [hashtable]$Hash
+)
+    $nvc = New-Object System.Collections.Specialized.NameValueCollection
+    foreach($h in $Hash.GetEnumerator()) {
+        $nvc.Add($h.Key, $h.Value.ToString())
+    }
+    $nvc
+}
+
+function InvokeCustomPostRequest {
+[CmdletBinding()]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $Uri ,
+
+    [Parameter(
+        Mandatory
+    )]
+    [Hashtable]
+    $Body ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential
+)
+    $data = NewNameValueCollection -Hash $Body
+    $client = New-Object System.Net.WebClient
+    if ($Credential) {
+        $client.Credentials = $Credential.GetNetworkCredential()
+    }
+    $client.UploadValues($Uri, $data)
+}
+
+
 
 AddIcingaCmdEnum
 AddSSLValidator
