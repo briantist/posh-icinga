@@ -226,6 +226,8 @@ param(
         }
         $response = $client.UploadValues($Uri, $data)
         [System.Text.Encoding]::UTF8.GetString($response)
+    } catch [System.Net.WebException] {
+        throw
     } finally {
         if ($SkipSslValidation) {
             [SSLValidator]::RestoreValidation()
@@ -244,10 +246,19 @@ param(
     $HtmlResponse
 )
 
-    
+    $document = New-Object HtmlAgilityPack.HtmlDocument
+    $document.LoadHtml($HtmlResponse)
 
-    
-
+    $table = $document.DocumentNode.SelectSingleNode("//table[@class='errorTable']")
+    if ($table) {
+        $errorMessage = "One or more errors occurred:`n"
+        $errorCount = 0
+        foreach ($row in $table.SelectNodes("tr")) {
+            $errorCount++
+            $errorMessage += ("{0}. {1}`n" -f $errorCount, ($row.SelectSingleNode("td[@class='errorContent']").InnerText))
+        }
+        throw [System.ArgumentException]$errorMessage
+    }
 }
 
 function Invoke-IcingaCommand {
@@ -263,6 +274,7 @@ param(
         Mandatory
     )]
     [Alias('cmd')]
+    [Alias('cmd_typ')]
     [IcingaCommand]
     $Command ,
 
@@ -287,7 +299,7 @@ param(
         SkipSslValidation = $SkipSslValidation
     }
     if ($Credential) {
-        $params['Credential'] = $Credential
+        $params.Credential = $Credential
     }
 
     Write-Verbose "Invoking the POST with the following parameters:"
@@ -295,8 +307,56 @@ param(
 
     if ($PSCmdlet.ShouldProcess($params['Uri'])) {
         $response = InvokeCustomPostRequest @params
-        $response
+        ParseIcingaResponse -HtmlResponse $response
     }
+}
+
+function Submit-IcingaCustomHostNotification {
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $IcingaUrl ,
+
+    [Parameter(
+        Mandatory
+    )]
+    [ValidateNotNullOrEmpty()]
+    [String]
+    $Host ,
+
+    [Parameter(
+        Mandatory
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('Message')]
+    [String]
+    $Comment ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+    $params = @{
+        IcingaUrl = $IcingaUrl
+        SkipSslValidation = $SkipSslValidation
+        Command = [IcingaCommand]::CMD_SEND_CUSTOM_HOST_NOTIFICATION
+    }
+    if ($Credential) {
+        $params.Credential = $Credential
+    }
+    $params.Data = @{
+        cmd_mod = 2 # Commit
+        host = $Host
+        com_data = $Comment
+    }
+    Invoke-IcingaCommand @params
 }
 
 AddIcingaEnum -Definition @((NewIcingaCheckStateEnumDefinition),(NewIcingaCmdEnumDefinition))
