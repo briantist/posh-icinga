@@ -249,14 +249,30 @@ param(
     $document = New-Object HtmlAgilityPack.HtmlDocument
     $document.LoadHtml($HtmlResponse)
 
+    $hasError = $false
+
     $table = $document.DocumentNode.SelectSingleNode("//table[@class='errorTable']")
     if ($table) {
+        $hasError = $true
         $errorMessage = "One or more errors occurred:`n"
         $errorCount = 0
         foreach ($row in $table.SelectNodes("tr")) {
             $errorCount++
             $errorMessage += ("{0}. {1}`n" -f $errorCount, ($row.SelectSingleNode("td[@class='errorContent']").InnerText))
         }
+    } else {
+        $div = $document.DocumentNode.SelectSingleNode("//div[@class='errorMessage']")
+        if ($div) {
+            $hasError = $true
+            $errorMessage = $div.InnerText
+        }
+        $div = $document.DocumentNode.SelectSingleNode("//div[@class='errorDescription']")
+        if ($div) {
+            $hasError = $true
+            $errorMessage = @($errorMessage, $div.InnerText) -join "`n"
+        }
+    }
+    if ($hasError) {
         throw [System.ArgumentException]$errorMessage
     }
 }
