@@ -1,2 +1,2 @@
-﻿Import-Module ([IO.Path]::Combine($PSScriptRoot,'Icinga.psm1')) -Force
+﻿Import-Module ([IO.Path]::Combine($PSScriptRoot,'Icinga')) -Force
 

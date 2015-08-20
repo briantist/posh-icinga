@@ -186,14 +186,10 @@ param(
     [hashtable]$Hash
 )
     $nvc = New-Object System.Collections.Specialized.NameValueCollection
-    Write-Verbose $nvc.GetType()
     foreach($h in $Hash.GetEnumerator()) {
         $nvc.Add($h.Key, $h.Value.ToString()) | Out-Null
     }
-    Write-Verbose $nvc.GetType()
-    Write-Verbose $nvc[0]
-    Write-Verbose $nvc
-    Write-Output -InputObject $nvc
+    ,$nvc
 }
 
 function InvokeCustomPostRequest {
@@ -228,7 +224,8 @@ param(
         if ($Credential) {
             $client.Credentials = $Credential.GetNetworkCredential()
         }
-        $client.UploadValues([Uri]$Uri, [System.Collections.Specialized.NameValueCollection]$data)
+        $response = $client.UploadValues($Uri, $data)
+        [System.Text.Encoding]::UTF8.GetString($response)
     } finally {
         if ($SkipSslValidation) {
             [SSLValidator]::RestoreValidation()
@@ -236,8 +233,25 @@ param(
     }
 }
 
-function Invoke-IcingaCommand {
+function ParseIcingaResponse {
 [CmdletBinding()]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [ValidateNotNullOrEmpty()]
+    [String]
+    $HtmlResponse
+)
+
+    
+
+    
+
+}
+
+function Invoke-IcingaCommand {
+[CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(
         Mandatory
@@ -275,7 +289,14 @@ param(
     if ($Credential) {
         $params['Credential'] = $Credential
     }
-    InvokeCustomPostRequest @params
+
+    Write-Verbose "Invoking the POST with the following parameters:"
+    $params | Out-String | Write-Verbose
+
+    if ($PSCmdlet.ShouldProcess($params['Uri'])) {
+        $response = InvokeCustomPostRequest @params
+        $response
+    }
 }
 
 AddIcingaEnum -Definition @((NewIcingaCheckStateEnumDefinition),(NewIcingaCmdEnumDefinition))
