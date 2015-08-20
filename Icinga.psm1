@@ -52,15 +52,31 @@ public enum IcingaCommand
     "$pre$($defs -join ",`r`n")$post"
 }
 
-function AddIcingaCmdEnum {
+function NewIcingaCheckStateEnumDefinition {
+[CmdletBinding()]
+param()
+    @'
+public enum IcingaCheckState
+{
+    OK = 0,
+    WARNING = 1,
+    CRITICAL = 2,
+    UNKNOWN = 3
+}
+'@
+}
+
+function AddIcingaEnum {
 [CmdletBinding()]
 param(
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [String]
-    $Definition = (NewIcingaCmdEnumDefinition)
+    [String[]]
+    $Definition
 )
-    Add-Type -TypeDefinition $Definition -ErrorAction Stop
+    foreach($typedef in $Definition) {
+        Add-Type -TypeDefinition $typedef -ErrorAction Stop
+    }
 }
 
 function AddSSLValidator {
@@ -165,14 +181,19 @@ param(
 
 function NewNameValueCollection {
 [CmdletBinding()]
+[OutputType([System.Collections.Specialized.NameValueCollection])]
 param(
     [hashtable]$Hash
 )
     $nvc = New-Object System.Collections.Specialized.NameValueCollection
+    Write-Verbose $nvc.GetType()
     foreach($h in $Hash.GetEnumerator()) {
-        $nvc.Add($h.Key, $h.Value.ToString())
+        $nvc.Add($h.Key, $h.Value.ToString()) | Out-Null
     }
-    $nvc
+    Write-Verbose $nvc.GetType()
+    Write-Verbose $nvc[0]
+    Write-Verbose $nvc
+    Write-Output -InputObject $nvc
 }
 
 function InvokeCustomPostRequest {
@@ -192,19 +213,72 @@ param(
 
     [Parameter()]
     [PSCredential]
-    $Credential
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
 )
-    $data = NewNameValueCollection -Hash $Body
-    $client = New-Object System.Net.WebClient
-    if ($Credential) {
-        $client.Credentials = $Credential.GetNetworkCredential()
+    try {
+        if ($SkipSslValidation) {
+            [SSLValidator]::OverrideValidation()
+        }
+        $data = NewNameValueCollection -Hash $Body
+        $client = New-Object System.Net.WebClient
+        if ($Credential) {
+            $client.Credentials = $Credential.GetNetworkCredential()
+        }
+        $client.UploadValues([Uri]$Uri, [System.Collections.Specialized.NameValueCollection]$data)
+    } finally {
+        if ($SkipSslValidation) {
+            [SSLValidator]::RestoreValidation()
+        }
     }
-    $client.UploadValues($Uri, $data)
 }
 
+function Invoke-IcingaCommand {
+[CmdletBinding()]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $IcingaUrl ,
 
+    [Parameter(
+        Mandatory
+    )]
+    [Alias('cmd')]
+    [IcingaCommand]
+    $Command ,
 
-AddIcingaCmdEnum
+    [Parameter(
+        Mandatory
+    )]
+    [hashtable]
+    $Data ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+    $Data['cmd_typ'] = $Command.value__
+    $params = @{
+        Uri = [Uri]($IcingaUrl | JoinUri -ChildPath '/cgi-bin/cmd.cgi')
+        Body = $Data
+        SkipSslValidation = $SkipSslValidation
+    }
+    if ($Credential) {
+        $params['Credential'] = $Credential
+    }
+    InvokeCustomPostRequest @params
+}
+
+AddIcingaEnum -Definition @((NewIcingaCheckStateEnumDefinition),(NewIcingaCmdEnumDefinition))
 AddSSLValidator
 
-Export-ModuleMember -Function *-*
+#Export-ModuleMember -Function *-*
