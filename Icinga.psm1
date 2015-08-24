@@ -309,6 +309,7 @@ param(
     $SkipSslValidation
 )
     $Data['cmd_typ'] = $Command.value__
+    $Data['cmd_mod'] = 2  # Commit
     $params = @{
         Uri = [Uri]($IcingaUrl | JoinUri -ChildPath '/cgi-bin/cmd.cgi')
         Body = $Data
@@ -368,14 +369,70 @@ param(
         $params.Credential = $Credential
     }
     $params.Data = @{
-        cmd_mod = 2 # Commit
         host = $Host
         com_data = $Comment
     }
     Invoke-IcingaCommand @params
 }
 
+function Submit-IcingaCustomServiceNotification {
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $IcingaUrl ,
+
+    [Parameter(
+        Mandatory
+    )]
+    [ValidateNotNullOrEmpty()]
+    [String]
+    $Host ,
+
+    [Parameter(
+        Mandatory
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('SVC')]
+    [String]
+    $Service ,
+    
+    [Parameter(
+        Mandatory
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('Message')]
+    [String]
+    $Comment ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+    $params = @{
+        IcingaUrl = $IcingaUrl
+        SkipSslValidation = $SkipSslValidation
+        Command = [IcingaCommand]::CMD_SEND_CUSTOM_SVC_NOTIFICATION
+    }
+    if ($Credential) {
+        $params.Credential = $Credential
+    }
+    $params.Data = @{
+        #host = $Host
+        hostservice = "$Host^$Service"
+        com_data = $Comment
+    }
+    Invoke-IcingaCommand @params
+}
+
+
 AddIcingaEnum -Definition @((NewIcingaCheckStateEnumDefinition),(NewIcingaCmdEnumDefinition))
 AddSSLValidator
 
-#Export-ModuleMember -Function *-*
+Export-ModuleMember -Function *-*
