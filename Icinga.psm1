@@ -327,7 +327,7 @@ param(
         ParseIcingaResponse -HtmlResponse $response
     }
 }
-
+<#
 function Submit-IcingaCustomHostNotification {
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -375,7 +375,84 @@ param(
     Invoke-IcingaCommand @params
 }
 
-function Submit-IcingaCustomServiceNotification {
+#>
+function Submit-IcingaCustomNotification {
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $IcingaUrl ,
+
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline
+    )]
+    [ValidateNotNullOrEmpty()]
+    [String[]]
+    $Host ,
+
+    [Parameter()]
+    [ValidateNotNullOrEmpty()]
+    [Alias('SVC')]
+    [String[]]
+    $Service ,
+    
+    [Parameter(
+        Mandatory
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('Message')]
+    [String]
+    $Comment ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+
+    Begin {
+        $params = @{
+            IcingaUrl = $IcingaUrl
+            SkipSslValidation = $SkipSslValidation
+            Command = [IcingaCommand]::CMD_SEND_CUSTOM_SVC_NOTIFICATION
+        }
+        if ($Credential) {
+            $params.Credential = $Credential
+        }
+    }
+
+    Process {
+        foreach($hostname in $Host) {
+            if ($Service) {
+                $params.Command = [IcingaCommand]::CMD_SEND_CUSTOM_SVC_NOTIFICATION
+                foreach($svc in $Service) {
+                    Write-Verbose "Sending Custom Service Notification for '$svc' on '$hostname'"
+                    $params.Data = @{
+                        hostservice = "$hostname^$svc"
+                        com_data = $Comment
+                    }
+                    Invoke-IcingaCommand @params
+                }
+            } else {
+                $params.Command = [IcingaCommand]::CMD_SEND_CUSTOM_HOST_NOTIFICATION
+                Write-Verbose "Sending Custom Host Notification for '$hostname'"
+                $params.Data = @{
+                    host = $hostname
+                    com_data = $Comment
+                }
+                Invoke-IcingaCommand @params
+            }
+        }
+    }
+}
+
+function Start-IcingaCustomHostNotification {
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(
@@ -395,14 +472,6 @@ param(
         Mandatory
     )]
     [ValidateNotNullOrEmpty()]
-    [Alias('SVC')]
-    [String]
-    $Service ,
-    
-    [Parameter(
-        Mandatory
-    )]
-    [ValidateNotNullOrEmpty()]
     [Alias('Message')]
     [String]
     $Comment ,
@@ -418,19 +487,17 @@ param(
     $params = @{
         IcingaUrl = $IcingaUrl
         SkipSslValidation = $SkipSslValidation
-        Command = [IcingaCommand]::CMD_SEND_CUSTOM_SVC_NOTIFICATION
+        Command = [IcingaCommand]::CMD_SEND_CUSTOM_HOST_NOTIFICATION
     }
     if ($Credential) {
         $params.Credential = $Credential
     }
     $params.Data = @{
-        #host = $Host
-        hostservice = "$Host^$Service"
+        host = $Host
         com_data = $Comment
     }
     Invoke-IcingaCommand @params
 }
-
 
 AddIcingaEnum -Definition @((NewIcingaCheckStateEnumDefinition),(NewIcingaCmdEnumDefinition))
 AddSSLValidator
