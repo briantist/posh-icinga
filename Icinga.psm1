@@ -417,7 +417,9 @@ param(
     }
 
     Write-Verbose "Invoking the POST with the following parameters:"
-    $params | Out-String | Write-Verbose
+    $params.Clone().Remove('Body') | Out-String | Write-Verbose
+    Write-Verbose "with body:"
+    $params.Body | Out-String | Write-Verbose
 
     if ($PSCmdlet.ShouldProcess($params['Uri'])) {
         $response = InvokeCustomPostRequest @params
@@ -634,6 +636,11 @@ param(
         if ($Credential) {
             $params.Credential = $Credential
         }
+        $flex = switch ($Type)
+        {
+            'Fixed' { 1 } #'1"' }
+            'Flexible' { 0 } #'0"' }
+        }
     }
 
     Process {
@@ -651,7 +658,8 @@ param(
             com_data = $Comment
             start_time = $StartTime | ConvertToIcingaDateTime
             end_time = $EndTime | ConvertToIcingaDateTime
-            flexible_selection = $Type.ToLower()
+            fixed = $flex
+            trigger = 0
         }
         foreach($hostname in $Host) {
             switch -Wildcard ($PSCmdlet.ParameterSetName)
