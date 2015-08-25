@@ -66,6 +66,19 @@ public enum IcingaCheckState
 '@
 }
 
+function NewIcingaHostChildOptionsEnumDefinition {
+[CmdletBinding()]
+param()
+    @'
+public enum IcingaHostChildOptions
+{
+    DO_NOTHING = 0,
+    SCHEDULE_TRIGGERED_DOWNTIME = 1,
+    SCHEDULE_NON_TRIGGERED_DOWNTIME = 2
+}
+'@
+}
+
 function AddIcingaEnum {
 [CmdletBinding()]
 param(
@@ -277,6 +290,70 @@ param(
     }
 }
 
+function ProcessDuration {
+[CmdletBinding(DefaultParameterSetName='Process')]
+[OutputType([DateTime], ParameterSetName='Process')]
+[OutputType([bool], ParameterSetName='Verify')]
+param(
+    [Parameter(
+        Mandatory,
+        ValueFromPipelineByPropertyName,
+        ParameterSetName='Process'
+    )]
+    [DateTime]
+    $StartTime ,
+
+    [Parameter(
+        Mandatory,
+        ValueFromPipelineByPropertyName,
+        ParameterSetName='Process'
+    )]
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline,
+        ParameterSetName='Verify'
+    )]
+    [String]
+    $Duration ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='Verify'
+    )]
+    [Switch]
+    $Verify
+)
+
+    Process {
+        $Span = New-TimeSpan
+        $formats = @(
+            '%d\d%h\h%m\m%s\s'
+            '%d\d%h\h%m\m'
+            '%d\d%h\h'
+            '%d\d'
+            '%h\h%m\m%s\s'
+            '%h\h%m\m'
+            '%h\h'
+            '%m\m%s\s'
+            '%m\m'
+            '%s\s'
+        )
+        $verdict = [TimeSpan]::TryParseExact($Duration, [string[]]$formats, $null, [ref]$Span)
+        if ($Verify) {
+            $verdict
+        } else {
+            if ($verdict) {
+                $StartTime + $Span
+            } else {
+                throw [System.Management.Automation.MethodInvocationException]"Error interpreting '$Duration'"
+            }
+        }
+    }
+}
+
+# Exports
+
+
 function Invoke-IcingaCommand {
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -327,55 +404,7 @@ param(
         ParseIcingaResponse -HtmlResponse $response
     }
 }
-<#
-function Submit-IcingaCustomHostNotification {
-[CmdletBinding(SupportsShouldProcess)]
-param(
-    [Parameter(
-        Mandatory
-    )]
-    [Uri]
-    $IcingaUrl ,
 
-    [Parameter(
-        Mandatory
-    )]
-    [ValidateNotNullOrEmpty()]
-    [String]
-    $Host ,
-
-    [Parameter(
-        Mandatory
-    )]
-    [ValidateNotNullOrEmpty()]
-    [Alias('Message')]
-    [String]
-    $Comment ,
-
-    [Parameter()]
-    [PSCredential]
-    $Credential ,
-
-    [Parameter()]
-    [Switch]
-    $SkipSslValidation
-)
-    $params = @{
-        IcingaUrl = $IcingaUrl
-        SkipSslValidation = $SkipSslValidation
-        Command = [IcingaCommand]::CMD_SEND_CUSTOM_HOST_NOTIFICATION
-    }
-    if ($Credential) {
-        $params.Credential = $Credential
-    }
-    $params.Data = @{
-        host = $Host
-        com_data = $Comment
-    }
-    Invoke-IcingaCommand @params
-}
-
-#>
 function Submit-IcingaCustomNotification {
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -395,7 +424,7 @@ param(
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [Alias('SVC')]
+    [Alias('Svc')]
     [String[]]
     $Service ,
     
@@ -452,8 +481,8 @@ param(
     }
 }
 
-function Start-IcingaCustomHostNotification {
-[CmdletBinding(SupportsShouldProcess)]
+function Start-IcingaDowntime {
+[CmdletBinding(SupportsShouldProcess,DefaultParameterSetName='HostsOnlyDuration')]
 param(
     [Parameter(
         Mandatory
@@ -462,12 +491,38 @@ param(
     $IcingaUrl ,
 
     [Parameter(
-        Mandatory
+        Mandatory,
+        ValueFromPipeline
     )]
     [ValidateNotNullOrEmpty()]
-    [String]
+    [String[]]
     $Host ,
 
+    [Parameter(
+        Mandatory,
+        ParameterSetName='ServiceDowntimeDuration'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='ServiceDowntimeEndTime'
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('Svc')]
+    [String[]]
+    $Service ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='HostAndAllServicesDuration'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='HostAndAllServicesEndTime'
+    )]
+    [Alias('AndAllServices')]
+    [Switch]
+    $AllServices ,
+        
     [Parameter(
         Mandatory
     )]
@@ -477,6 +532,72 @@ param(
     $Comment ,
 
     [Parameter()]
+    [ValidateNotNullOrEmpty()]
+    [ValidateSet(
+         'Fixed'
+        ,'Flexible'
+    )]
+    [Alias('flexible_selection')]
+    [String]
+    $Type = 'Fixed' ,
+
+    [Parameter(
+        Mandatory
+    )]
+    [Alias('start_time')]
+    [Alias('StartAt')]
+    [Alias('Begin')]
+    [Alias('Start')]
+    [DateTime]
+    $StartTime ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='HostsOnlyEndTime'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='HostAndAllServicesEndTime'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='ServiceDowntimeEndTime'
+    )]
+    [Alias('end_time')]
+    [Alias('EndAt')]
+    [Alias('End')]
+    [DateTime]
+    $EndTime ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='HostsOnlyDuration'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='HostAndAllServicesDuration'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='ServiceDowntimeDuration'
+    )]
+    [ValidateScript( { $_ | ProcessDuration -Verify } )]
+    [Alias('EndAfter')]
+    [Alias('For')]
+    [String]
+    $Duration ,
+
+    [Parameter(
+        ParameterSetName='HostsOnlyDuration'
+    )]
+    [Parameter(
+        ParameterSetName='HostsOnlyEndTime'
+    )]
+    [Alias('childoptions')]
+    [IcingaHostChildOptions]
+    $ChildOption = [IcingaHostChildOptions]::DO_NOTHING ,
+
+    [Parameter()]
     [PSCredential]
     $Credential ,
 
@@ -484,22 +605,51 @@ param(
     [Switch]
     $SkipSslValidation
 )
-    $params = @{
-        IcingaUrl = $IcingaUrl
-        SkipSslValidation = $SkipSslValidation
-        Command = [IcingaCommand]::CMD_SEND_CUSTOM_HOST_NOTIFICATION
+
+    Begin {
+        throw [System.NotImplementedException]
+        $params = @{
+            IcingaUrl = $IcingaUrl
+            SkipSslValidation = $SkipSslValidation
+            Command = [IcingaCommand]::CMD_SEND_CUSTOM_SVC_NOTIFICATION
+        }
+        if ($Credential) {
+            $params.Credential = $Credential
+        }
     }
-    if ($Credential) {
-        $params.Credential = $Credential
+
+    Process {
+        throw [System.NotImplementedException]
+        foreach($hostname in $Host) {
+            if ($Service) {
+                $params.Command = [IcingaCommand]::CMD_SEND_CUSTOM_SVC_NOTIFICATION
+                foreach($svc in $Service) {
+                    Write-Verbose "Sending Custom Service Notification for '$svc' on '$hostname'"
+                    $params.Data = @{
+                        hostservice = "$hostname^$svc"
+                        com_data = $Comment
+                    }
+                    Invoke-IcingaCommand @params
+                }
+            } else {
+                $params.Command = [IcingaCommand]::CMD_SEND_CUSTOM_HOST_NOTIFICATION
+                Write-Verbose "Sending Custom Host Notification for '$hostname'"
+                $params.Data = @{
+                    host = $hostname
+                    com_data = $Comment
+                }
+                Invoke-IcingaCommand @params
+            }
+        }
     }
-    $params.Data = @{
-        host = $Host
-        com_data = $Comment
-    }
-    Invoke-IcingaCommand @params
 }
 
-AddIcingaEnum -Definition @((NewIcingaCheckStateEnumDefinition),(NewIcingaCmdEnumDefinition))
+AddIcingaEnum -Definition @(
+    (NewIcingaCheckStateEnumDefinition)
+    (NewIcingaCmdEnumDefinition)
+    (NewIcingaHostChildOptionsEnumDefinition)
+)
+
 AddSSLValidator
 
-Export-ModuleMember -Function *-*
+#Export-ModuleMember -Function *-*
