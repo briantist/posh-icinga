@@ -338,16 +338,36 @@ param(
             '%m\m'
             '%s\s'
         )
+        Write-Verbose "Trying to parse '$Duration' as a duration."
         $verdict = [TimeSpan]::TryParseExact($Duration, [string[]]$formats, $null, [ref]$Span)
         if ($Verify) {
             $verdict
         } else {
             if ($verdict) {
-                $StartTime + $Span
+                $end = $StartTime + $Span
+                Write-Verbose "'$StartTime' + '$Duration' = '$end'"
+                $end
             } else {
                 throw [System.Management.Automation.MethodInvocationException]"Error interpreting '$Duration'"
             }
         }
+    }
+}
+
+function ConvertToIcingaDateTime {
+[CmdletBinding()]
+[OutputType([String])]
+param(
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline
+    )]
+    [DateTime]
+    $DateTime
+)
+
+    Process {
+        $DateTime.ToString('MM-dd-yyyy HH:mm:ss')
     }
 }
 
@@ -607,11 +627,9 @@ param(
 )
 
     Begin {
-        throw [System.NotImplementedException]
         $params = @{
             IcingaUrl = $IcingaUrl
             SkipSslValidation = $SkipSslValidation
-            Command = [IcingaCommand]::CMD_SEND_CUSTOM_SVC_NOTIFICATION
         }
         if ($Credential) {
             $params.Credential = $Credential
@@ -619,26 +637,58 @@ param(
     }
 
     Process {
-        throw [System.NotImplementedException]
+        if ($PSCmdlet.ParameterSetName -like '*Duration') {
+            $recurser = ([HashTable]$PSBoundParameters).Clone()
+            $recurser.Remove('Duration')
+            $recurser.EndTime = [PSCustomObject][HashTable]$PSBoundParameters | ProcessDuration
+            Start-IcingaDowntime @recurser
+            return
+        }
+        if ($EndTime -le $StartTime) {
+            throw [System.ArgumentException]"EndTime must be later than StartTime"
+        }
+        $data_base = @{
+            com_data = $Comment
+            start_time = $StartTime | ConvertToIcingaDateTime
+            end_time = $EndTime | ConvertToIcingaDateTime
+            flexible_selection = $Type.ToLower()
+        }
         foreach($hostname in $Host) {
-            if ($Service) {
-                $params.Command = [IcingaCommand]::CMD_SEND_CUSTOM_SVC_NOTIFICATION
-                foreach($svc in $Service) {
-                    Write-Verbose "Sending Custom Service Notification for '$svc' on '$hostname'"
-                    $params.Data = @{
-                        hostservice = "$hostname^$svc"
-                        com_data = $Comment
-                    }
+            switch -Wildcard ($PSCmdlet.ParameterSetName)
+            {
+                'HostsOnly*' { 
+                    $params.Command = [IcingaCommand]::CMD_SCHEDULE_HOST_DOWNTIME
+                    $params.Data = $data_base.Clone()
+                    $params.Data.host = $hostname
+                    $params.Data.childoptions = $ChildOption.value__
+
+                    Write-Verbose "Scheduling downtime for host '$hostname'."
+
                     Invoke-IcingaCommand @params
                 }
-            } else {
-                $params.Command = [IcingaCommand]::CMD_SEND_CUSTOM_HOST_NOTIFICATION
-                Write-Verbose "Sending Custom Host Notification for '$hostname'"
-                $params.Data = @{
-                    host = $hostname
-                    com_data = $Comment
+                
+                'HostAndAllServices*' { 
+                    $params.Command = [IcingaCommand]::CMD_SCHEDULE_HOST_SVC_DOWNTIME
+                    $params.Data = $data_base.Clone()
+                    $params.Data.host = $hostname
+
+                    Write-Verbose "Scheduling downtime for host '$hostname' and all of its services."
+
+                    Invoke-IcingaCommand @params
                 }
-                Invoke-IcingaCommand @params
+
+                'ServiceDowntime*' { 
+                    $params.Command = [IcingaCommand]::CMD_SCHEDULE_SVC_DOWNTIME
+                    foreach($svc in $Service) {
+                        $params.Data = $data_base.Clone()
+                        $params.Data.hostservice = "$hostname^$svc"
+
+                        Write-Verbose "Scheduling downtime for service '$svc' on host '$hostname'."
+
+                        Invoke-IcingaCommand @params
+                    }
+                }
+                default { throw [System.NotImplementedException]"Error in function definition. This should never have happened." }
             }
         }
     }
