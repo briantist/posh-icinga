@@ -436,8 +436,32 @@ param(
     }
 }
 
-function FormatIcingaDowntimeTriggerString {
+function FormatIcingaDowntimeTrigger {
+[CmdletBinding()]
+param(
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline
+    )]
+    [PSObject[]]
+    $DowntimeObject
+)
 
+    Process {
+        $fmtDateTime = 'MM-dd-yyyy_HH:mm:ss'
+        $formatter = @(
+                    $downtime.downtime_id
+                    $downtime.host_display_name -replace '\s','_'
+                    $downtime.start_time.ToString($fmtDateTime)
+        )
+        foreach($downtime in $DowntimeObject) {
+            if ($downtime.is_service) {
+                'ID:{0}/Service:{3}/Host:{1}/starting@{2}' -f ($formatter + $downtime.service_display_name -replace '\s','_')
+            } else {
+                'ID:{0}/Host:{1}/starting@{2}' -f $formatter
+            }
+        }
+    }
 }
 
 
@@ -498,6 +522,7 @@ param(
             trigger_time = $null
             duration = [TimeSpan]($_.duration -replace '\s','' | ProcessDuration -AsTimespan)
             is_in_effect = [Bool]$_.is_in_effect
+            downtime_id = [int]$_.downtime_id
             trigger_id = $null
         }
         if ($_.service_description) {
