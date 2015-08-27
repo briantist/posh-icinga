@@ -248,6 +248,49 @@ param(
     }
 }
 
+function InvokeCustomGetRequest {
+[CmdletBinding()]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $Uri ,
+
+    [Parameter()]
+    [Hashtable]
+    $Body ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+    try {
+        if ($SkipSslValidation) {
+            [SSLValidator]::OverrideValidation()
+        }
+        $client = New-Object System.Net.WebClient
+        if ($Credential) {
+            $client.Credentials = $Credential.GetNetworkCredential()
+        }
+        if ($Body) {
+            $client.QueryString = NewNameValueCollection -Hash $Body
+        }
+        $response = $client.DownloadData($Uri)
+        [System.Text.Encoding]::UTF8.GetString($response)
+    } catch [System.Net.WebException] {
+        throw
+    } finally {
+        if ($SkipSslValidation) {
+            [SSLValidator]::RestoreValidation()
+        }
+    }
+}
+
 function ParseIcingaResponse {
 [CmdletBinding()]
 param(
