@@ -337,6 +337,7 @@ function ProcessDuration {
 [CmdletBinding(DefaultParameterSetName='Process')]
 [OutputType([DateTime], ParameterSetName='Process')]
 [OutputType([bool], ParameterSetName='Verify')]
+[OutputType([Timespan], ParameterSetName='AsTimespan')]
 param(
     [Parameter(
         Mandatory,
@@ -356,6 +357,11 @@ param(
         ValueFromPipeline,
         ParameterSetName='Verify'
     )]
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline,
+        ParameterSetName='AsTimespan'
+    )]
     [String]
     $Duration ,
 
@@ -364,7 +370,14 @@ param(
         ParameterSetName='Verify'
     )]
     [Switch]
-    $Verify
+    $Verify ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='AsTimespan'
+    )]
+    [Switch]
+    $AsTimespan
 )
 
     Process {
@@ -383,15 +396,24 @@ param(
         )
         Write-Verbose "Trying to parse '$Duration' as a duration."
         $verdict = [TimeSpan]::TryParseExact($Duration, [string[]]$formats, $null, [ref]$Span)
-        if ($Verify) {
-            $verdict
-        } else {
-            if ($verdict) {
-                $end = $StartTime + $Span
-                Write-Verbose "'$StartTime' + '$Duration' = '$end'"
-                $end
-            } else {
-                throw [System.Management.Automation.MethodInvocationException]"Error interpreting '$Duration'"
+        switch ($PSCmdlet.ParameterSetName)
+        {
+            'Verify' { $verdict }
+            'Process' {
+                if ($verdict) {
+                    $end = $StartTime + $Span
+                    Write-Verbose "'$StartTime' + '$Duration' = '$end'"
+                    $end
+                } else {
+                    throw [System.Management.Automation.MethodInvocationException]"Error interpreting '$Duration'"
+                }
+            }
+            'AsTimespan' {
+                if ($verdict) {
+                    $Span
+                } else {
+                    throw [System.Management.Automation.MethodInvocationException]"Error interpreting '$Duration'"
+                }
             }
         }
     }
@@ -414,8 +436,86 @@ param(
     }
 }
 
+function FormatIcingaDowntimeTriggerString {
+
+}
+
+
 # Exports
 
+
+function Get-IcingaDowntime {
+[CmdletBinding()]
+[OutputType([PSObject])]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $Uri ,
+    
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+
+    $params = @{}
+
+    $params.Uri = $Uri | JoinUri -ChildPath cgi-bin,extinfo.cgi
+    $params.SkipSslValidation = $SkipSslValidation
+    if ($Credential) {
+        $params.Credential = $Credential
+    }
+    $params.Body = @{
+        type = 6
+        limit = 0
+        start = 1
+        jsonoutput = ''
+    }
+
+    $raw = InvokeCustomGetRequest @params
+    if (!$raw) {
+        throw [System.Net.WebException]"Could not retrieve Icinga downtimes."
+    }
+    $dtobj = $raw | ConvertFrom-Json
+
+    $dtobj.extinfo.host_downtimes + $dtobj.extinfo.service_downtimes | ForEach-Object {
+        $props = [Ordered]@{
+            host_name = $_.host_name
+            host_display_name = $_.host_display_name
+            service_description = $null
+            service_display_name = $null
+            entry_time = [DateTime]$_.entry_time
+            author = $_.author
+            comment = $_.comment
+            start_time = [DateTime]$_.start_time
+            end_time = [DateTime]$_.end_time
+            type = $_.type
+            trigger_time = $null
+            duration = [TimeSpan]($_.duration -replace '\s','' | ProcessDuration -AsTimespan)
+            is_in_effect = [Bool]$_.is_in_effect
+            trigger_id = $null
+        }
+        if ($_.service_description) {
+            $props.service_description = $_.service_description
+        }
+        if ($_.service_display_name) {
+            $props.service_display_name = $_.service_display_name
+        }
+        if ($_.trigger_time -and $_.trigger_time -ne 'null') {
+            $props.trigger_time = [DateTime]$_.trigger_time
+        }
+        if ($_.trigger_id -and $_.trigger_id -ne 'null') {
+            $props.trigger_id = [int]$_.trigger_id
+        }
+
+        New-Object PSObject -Property $props | Add-Member -MemberType ScriptProperty -Name is_service -Value { [bool]($this.service_description -or $this.service_display_name) } -PassThru
+    }
+}
 
 function Invoke-IcingaCommand {
 [CmdletBinding(SupportsShouldProcess)]
