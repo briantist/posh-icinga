@@ -759,6 +759,12 @@ param(
     [DateTime]
     $EndTime ,
 
+    [Parameter()]
+    [ValidateNotNullOrEmpty()]
+    [ValidateScript( { [int]$_ } )]
+    [String] # Eventually this might take a longer string as a trigger, from which the ID will be extracted, hence [String] and not [int]
+    $TriggeredBy ,
+
     [Parameter(
         Mandatory,
         ParameterSetName='HostsOnlyDuration'
@@ -796,42 +802,6 @@ param(
     $SkipSslValidation
 )
 
-    DynamicParam {
-        $paramDictionary = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
-        $attribCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
-
-        $icingaInfo = @{
-            Uri = $IcingaUrl
-            SkipSslValidation = $SkipSslValidation
-        }
-        if ($Credential) {
-            $icingaInfo.Credential = $Credential
-        }
-
-        if ($MyInvocation.MyCommand.Module.PrivateData.DowntimeCache.LastCheck -lt (Get-Date).AddMinutes(-1)) {
-            $MyInvocation.MyCommand.Module.PrivateData.DowntimeCache.List = @()
-            $MyInvocation.MyCommand.Module.PrivateData.DowntimeCache.List = Get-IcingaDowntime @icingaInfo -ErrorAction Ignore | FormatIcingaDowntimeTrigger
-            $MyInvocation.MyCommand.Module.PrivateData.DowntimeCache.LastCheck = Get-Date
-        }
-        
-        if ($MyInvocation.MyCommand.Module.PrivateData.DowntimeCache.List) {
-            $validateSet = New-Object System.Management.Automation.ValidateSetAttribute($MyInvocation.MyCommand.Module.PrivateData.DowntimeCache.List)
-            $attribCollection.Add($validateSet)
-        }
-
-        $attribCollection.Add((New-Object System.Management.Automation.ValidateNotNullOrEmptyAttribute))
-        
-        $parameterAttribute = New-Object System.Management.Automation.ParameterAttribute
-        $parameterAttribute.ParameterSetName = '__AllParameterSets'
-        $attribCollection.Add($parameterAttribute)
-
-        $paramTriggeredBy = New-Object System.Management.Automation.RuntimeDefinedParameter('TriggeredBy', [String], $attribCollection)
-
-        $paramDictionary.Add('TriggeredBy', $paramTriggeredBy)
-
-        return $paramDictionary
-    }
-
     Begin {
         $params = @{
             IcingaUrl = $IcingaUrl
@@ -863,7 +833,7 @@ param(
             start_time = $StartTime | ConvertToIcingaDateTime
             end_time = $EndTime | ConvertToIcingaDateTime
             fixed = $flex
-            trigger = 0
+            trigger = [int]$TriggeredBy
         }
         foreach($hostname in $Host) {
             switch -Wildcard ($PSCmdlet.ParameterSetName)
