@@ -870,7 +870,7 @@ param(
                         Invoke-IcingaCommand @params
                     }
                 }
-                default { throw [System.NotImplementedException]"Error in function definition. This should never have happened." }
+                default { throw [System.NotImplementedException]"Error in function definition. This should never have happened. ParameterSet: $($PSCmdlet.ParameterSetName)" }
             }
         }
     }
@@ -988,6 +988,171 @@ param(
     }
 }
 
+function Add-IcingaAcknowledgement {
+[CmdletBinding(SupportsShouldProcess,DefaultParameterSetName='Host')]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $IcingaUrl ,
+
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline
+    )]
+    [ValidateNotNullOrEmpty()]
+    [String[]]
+    $Host ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='Service'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='ServiceExpireDuration'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='ServiceExpireEnd'
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('Svc')]
+    [String[]]
+    $Service ,
+
+    [Parameter(
+        Mandatory
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('Message')]
+    [String]
+    $Comment ,
+
+    [Parameter()]
+    [Switch]
+    $Persistent ,
+
+    [Parameter()]
+    [Switch]
+    $Sticky ,
+
+    [Parameter()]
+    [Switch]
+    $Notfy ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='HostExpireDuration'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='ServiceExpireDuration'
+    )]
+    [ValidateScript( { $_ | ProcessDuration -Verify } )]
+    [Alias('EndAfter')]
+    [Alias('For')]
+    [String]
+    $Duration ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='HostExpireEnd'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='ServiceExpireEnd'
+    )]
+    [Alias('end_time')]
+    [Alias('EndAt')]
+    [Alias('End')]
+    [DateTime]
+    $EndTime ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+
+    Begin {
+        $params = @{
+            IcingaUrl = $IcingaUrl
+            SkipSslValidation = $SkipSslValidation
+        }
+        if ($Credential) {
+            $params.Credential = $Credential
+        }
+    }
+    
+    Process {
+        if ($PSCmdlet.ParameterSetName -like '*Duration') {
+            $recurser = ([HashTable]$PSBoundParameters).Clone()
+            $recurser.Remove('Duration')
+            $recurser.EndTime = ProcessDuration -StartTime ([DateTime]::Now) -Duration $Duration
+            Add-IcingaAcknowledgement @recurser
+            return
+        }
+        if ($EndTime -and $EndTime -le [DateTime]::Now) {
+            throw [System.ArgumentException]"EndTime must be in the future."
+        }
+        $data_base = @{
+            com_data = $Comment
+        }
+        if ($Persistent) {
+            $data_base.persistent = 'on'
+        }
+        if ($EndTime) {
+            $data_base.use_ack_end_time = 'on'
+            $data_base.end_time = $EndTime | ConvertToIcingaDateTime
+        }
+        if ($Sticky) {
+            $data_base.sticky_ack = 'on'
+        }
+        if ($Notfy) {
+            $data_base.send_notification = 'on'
+        }
+        $params.Command = switch -Wildcard ($PSCmdlet.ParameterSetName)
+        {
+            'Host*' {
+                [IcingaCommand]::CMD_ACKNOWLEDGE_HOST_PROBLEM
+            }
+            'HostExpireEnd' {
+                # [IcingaCommand]::CMD_ACKNOWLEDGE_HOST_PROBLEM_EXPIRE
+
+            }
+            'Service*' {
+                [IcingaCommand]::CMD_ACKNOWLEDGE_SVC_PROBLEM
+            }
+            'ServiceExpireEnd' {
+                # [IcingaCommand]::CMD_ACKNOWLEDGE_SVC_PROBLEM_EXPIRE
+            }
+            default { throw [System.NotImplementedException]"Error in function definition. This should never have happened. ParameterSet: $($PSCmdlet.ParameterSetName)" }
+        }
+        foreach ($hostname in $Host) {
+            $params.Data = $data_base.Clone()
+            if ($Service) {
+                foreach($svc in $Service) {
+                    $params.Data.hostservice = "$hostname^$svc"
+
+                    Write-Verbose -Message "Acknowleding problem for '$svc' on '$hostname'."
+
+                    Invoke-IcingaCommand @params
+                }
+            } else {
+                $params.Data.host = $hostname
+
+                Write-Verbose -Message "Acknowleding problem for host '$hostname'."
+
+                Invoke-IcingaCommand @params
+            }
+        }
+    }
+}
 
 AddIcingaEnum -Definition @(
     (NewIcingaCheckStateEnumDefinition)

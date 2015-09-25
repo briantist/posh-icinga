@@ -13,7 +13,9 @@ $PSDefaultParameterValues = @{
 
 #return
 
+<#
 #Start-IcingaDowntime -Host radar -Comment 'test' -StartTime (Get-Date).AddSeconds(-30) -Duration 5m -Service Ping,"Disk Usage","Remote Desktop"
+
 
 do { 
     Start-Sleep -Seconds 1 
@@ -23,3 +25,6 @@ do {
 Read-Host
 
 Stop-IcingaDowntime -Host radar -Service "Disk Usage"
+#>
+
+Add-IcingaAcknowledgement -Host sidv -Service HTTP -Comment "testing module" -Duration 1m -Notfy
