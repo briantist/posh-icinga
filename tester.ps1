@@ -27,4 +27,4 @@ Read-Host
 Stop-IcingaDowntime -Host radar -Service "Disk Usage"
 #>
 
-Add-IcingaAcknowledgement -Host sidv -Service HTTP -Comment "testing module" -Duration 1m -Notfy
+Confirm-IcingaProblem -Host sidv -Service HTTP -Comment "testing module" -Duration 1m -Notfy

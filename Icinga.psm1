@@ -1154,6 +1154,75 @@ param(
     }
 }
 
+function Remove-IcingaAcknowledgement {
+[CmdletBinding(SupportsShouldProcess,DefaultParameterSetName='Host')]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $IcingaUrl ,
+
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline
+    )]
+    [ValidateNotNullOrEmpty()]
+    [String[]]
+    $Host ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='Service'
+    )]
+    [String[]]
+    $Service ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+
+    Begin {
+        $params = @{
+            IcingaUrl = $IcingaUrl
+            SkipSslValidation = $SkipSslValidation
+        }
+        if ($Credential) {
+            $params.Credential = $Credential
+        }
+    }
+
+    Process {
+        $data_base = @{}
+        foreach($hostname in $Host) {
+            if ($PSCmdlet.ParameterSetName -eq 'Service') {
+                $params.Command = [IcingaCommand]::CMD_REMOVE_SVC_ACKNOWLEDGEMENT
+                $params.Data = $data_base.Clone()
+                foreach ($svc in $Service) {
+                    $params.Data.hostservice = "$hostname^$svc"
+                    
+                    Write-Verbose -Message "Removing service acknowledgement for '$svc' on '$hostname'."
+                    
+                    Invoke-IcingaCommand @params 
+                }
+            } else {
+                $params.Command = [IcingaCommand]::CMD_REMOVE_HOST_ACKNOWLEDGEMENT
+                $params.Data = $data_base.Clone()
+                $params.Data.host = $hostname
+
+                Write-Verbose -Message "Removing host acknowledgement for '$hostname'."
+
+                Invoke-IcingaCommand @params
+            }
+        }
+    }
+}
+
 AddIcingaEnum -Definition @(
     (NewIcingaCheckStateEnumDefinition)
     (NewIcingaCmdEnumDefinition)
@@ -1162,4 +1231,6 @@ AddIcingaEnum -Definition @(
 
 AddSSLValidator
 
-#Export-ModuleMember -Function *-*
+New-Alias -Name Confirm-IcingaProblem -Value Add-IcingaAcknowledgement
+
+Export-ModuleMember -Function *-* -Alias *-*
