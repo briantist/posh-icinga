@@ -476,7 +476,7 @@ param(
         Mandatory
     )]
     [Uri]
-    $Uri ,
+    $IcingaUrl ,
     
     [Parameter()]
     [PSCredential]
@@ -489,7 +489,7 @@ param(
 
     $params = @{}
 
-    $params.Uri = $Uri | JoinUri -ChildPath cgi-bin,extinfo.cgi
+    $params.Uri = $IcingaUrl | JoinUri -ChildPath cgi-bin,extinfo.cgi
     $params.SkipSslValidation = $SkipSslValidation
     if ($Credential) {
         $params.Credential = $Credential
@@ -875,6 +875,119 @@ param(
         }
     }
 }
+
+function Stop-IcingaDowntime {
+[CmdletBinding(SupportsShouldProcess,DefaultParameterSetName='HostAndAllServices')]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $IcingaUrl ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='ByDowntimeID'
+    )]
+    [Alias('ID')]
+    [Alias('DownID')]
+    [Alias('down_id')]
+    [int[]]
+    $DowntimeId ,
+
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline,
+        ParameterSetName='HostAndAllServices'
+    )]
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline,
+        ParameterSetName='Service'
+    )]
+    [ValidateNotNullOrEmpty()]
+    [String[]]
+    $Host ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='Service'
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('Svc')]
+    [String[]]
+    $Service ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+
+    Begin {
+        $params = @{
+            IcingaUrl = $IcingaUrl
+            SkipSslValidation = $SkipSslValidation
+        }
+        if ($Credential) {
+            $params.Credential = $Credential
+        }
+    }
+
+    Process {
+        $data_base = @{}
+        switch ($PSCmdlet.ParameterSetName)
+        {
+            'ByDowntimeID' {
+                foreach($down_id in $DowntimeId) {
+                    $params.Command = [IcingaCommand]::CMD_DEL_SVC_DOWNTIME
+                    $params.Data = $data_base.Clone()
+                    $params.Data.down_id = $down_id
+
+                    Write-Verbose "Deleting downtime ID '$down_id'."
+
+                    Invoke-IcingaCommand @params
+                }
+            }
+
+            'HostAndAllServices' { 
+                foreach($hostname in $Host) {
+                    $params.Command = [IcingaCommand]::CMD_DEL_DOWNTIME_BY_HOST_NAME
+                    $params.Data = $data_base.Clone()
+                    $params.Data.host = $hostname
+
+                    Write-Verbose "Deleting downtime for host '$hostname' and all of its services."
+
+                    Invoke-IcingaCommand @params
+                }
+            }
+
+            'Service' { 
+                foreach($hostname in $Host) {
+                    $downs = Get-IcingaDowntime @params 
+                    foreach($svc in $Service) {
+                        $down_id = $downs | Where-Object { 
+                            $_.host_name -ieq $hostname -and
+                            $_.service_description -ieq $svc
+                        } | Select-Object -ExpandProperty downtime_id
+                        if (!$down_id) {
+                            throw [System.InvalidOperationException]"No downtime found for '$svc' on '$hostname'."
+                        }
+
+                        Write-Verbose "Deleting downtime for service '$svc' on host '$hostname'."
+
+                        Stop-IcingaDowntime @params -DowntimeId $down_id
+                    }
+                }
+            }
+            default { throw [System.NotImplementedException]"Error in function definition. This should never have happened. ParameterSet: $($PSCmdlet.ParameterSetName)" }
+        }
+    }
+}
+
 
 AddIcingaEnum -Definition @(
     (NewIcingaCheckStateEnumDefinition)
