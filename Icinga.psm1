@@ -794,6 +794,10 @@ param(
     $ChildOption = [IcingaHostChildOptions]::DO_NOTHING ,
 
     [Parameter()]
+    [Switch]
+    $Unique ,
+
+    [Parameter()]
     [PSCredential]
     $Credential ,
 
@@ -815,13 +819,16 @@ param(
             'Fixed' { 1 } #'1"' }
             'Flexible' { 0 } #'0"' }
         }
+        if ($Unique) {
+            $currentDowntimes = Get-IcingaDowntime @params -Verbose:$false
+        }
     }
 
     Process {
         if ($PSCmdlet.ParameterSetName -like '*Duration') {
             $recurser = ([HashTable]$PSBoundParameters).Clone()
             $recurser.Remove('Duration')
-            $recurser.EndTime = [PSCustomObject][HashTable]$PSBoundParameters | ProcessDuration
+            $recurser.EndTime = [PSCustomObject][HashTable]$PSBoundParameters | ProcessDuration -Verbose:$false
             Start-IcingaDowntime @recurser
             return
         }
@@ -836,6 +843,7 @@ param(
             trigger = [int]$TriggeredBy
         }
         foreach($hostname in $Host) {
+            $skipDup = $false
             switch -Wildcard ($PSCmdlet.ParameterSetName)
             {
                 'HostsOnly*' { 
@@ -844,9 +852,25 @@ param(
                     $params.Data.host = $hostname
                     $params.Data.childoptions = $ChildOption.value__
 
-                    Write-Verbose "Scheduling downtime for host '$hostname'."
+                    if ($Unique) {
+                        foreach ($downtime in $currentDowntimes) {
+                            $skipDup = $skipDup -or (
+                                $downtime.host_name -eq $params.Data.host -and
+                                $downtime.start_time -eq $params.Data.start_time -and
+                                $downtime.end_time -eq $params.Data.end_time -and
+                                $downtime.type -ieq $Type -and
+                                [int]$downtime.trigger_id -eq [int]$params.Data.trigger -and
+                                $downtime.comment -eq $params.Data.com_data
+                            )
+                        }
+                    }
 
-                    Invoke-IcingaCommand @params
+                    if ($skipDup) {
+                        Write-Verbose -Message "Skipping duplicate downtime request for '$hostname'."
+                    } else {
+                        Write-Verbose "Scheduling downtime for host '$hostname'."
+                        Invoke-IcingaCommand @params
+                    }
                 }
                 
                 'HostAndAllServices*' { 
@@ -854,9 +878,25 @@ param(
                     $params.Data = $data_base.Clone()
                     $params.Data.host = $hostname
 
-                    Write-Verbose "Scheduling downtime for host '$hostname' and all of its services."
+                    if ($Unique) {
+                        foreach ($downtime in $currentDowntimes) {
+                            $skipDup = $skipDup -or (
+                                $downtime.host_name -eq $params.Data.host -and
+                                $downtime.start_time -eq $params.Data.start_time -and
+                                $downtime.end_time -eq $params.Data.end_time -and
+                                $downtime.type -ieq $Type -and
+                                [int]$downtime.trigger_id -eq [int]$params.Data.trigger -and
+                                $downtime.comment -eq $params.Data.com_data
+                            )
+                        }
+                    }
 
-                    Invoke-IcingaCommand @params
+                    if ($skipDup) {
+                        Write-Verbose -Message "Skipping duplicate downtime request for '$hostname'."
+                    } else {
+                        Write-Verbose "Scheduling downtime for host '$hostname' and all of its services."
+                        Invoke-IcingaCommand @params
+                    }
                 }
 
                 'ServiceDowntime*' { 
@@ -865,9 +905,26 @@ param(
                         $params.Data = $data_base.Clone()
                         $params.Data.hostservice = "$hostname^$svc"
 
-                        Write-Verbose "Scheduling downtime for service '$svc' on host '$hostname'."
+                        if ($Unique) {
+                            foreach ($downtime in $currentDowntimes) {
+                                $skipDup = $skipDup -or (
+                                    $downtime.host_name -eq $hostname -and
+                                    $downtime.service_description -eq $svc -and
+                                    $downtime.start_time -eq $params.Data.start_time -and
+                                    $downtime.end_time -eq $params.Data.end_time -and
+                                    $downtime.type -ieq $Type -and
+                                    [int]$downtime.trigger_id -eq [int]$params.Data.trigger -and
+                                    $downtime.comment -eq $params.Data.com_data
+                                )
+                            }
+                        }
 
-                        Invoke-IcingaCommand @params
+                        if ($skipDup) {
+                            Write-Verbose -Message "Skipping duplicate downtime request for '$svc' on '$hostname'."
+                        } else {
+                            Write-Verbose "Scheduling downtime for service '$svc' on host '$hostname'."
+                            Invoke-IcingaCommand @params
+                        }
                     }
                 }
                 default { throw [System.NotImplementedException]"Error in function definition. This should never have happened. ParameterSet: $($PSCmdlet.ParameterSetName)" }
