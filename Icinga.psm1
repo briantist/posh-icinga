@@ -828,7 +828,8 @@ param(
         if ($PSCmdlet.ParameterSetName -like '*Duration') {
             $recurser = ([HashTable]$PSBoundParameters).Clone()
             $recurser.Remove('Duration')
-            $recurser.EndTime = [PSCustomObject][HashTable]$PSBoundParameters | ProcessDuration -Verbose:$false
+            #$recurser.EndTime = [PSCustomObject][HashTable]$PSBoundParameters | ProcessDuration -Verbose:$false
+            $recurser.EndTime = $PSBoundParameters.Duration | ProcessDuration -Verbose:$false
             Start-IcingaDowntime @recurser
             return
         }
