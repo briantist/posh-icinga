@@ -79,6 +79,33 @@ public enum IcingaHostChildOptions
 '@
 }
 
+function NewIcingaHostCheckResultEnumDefinition {
+[CmdletBinding()]
+param()
+    @'
+public enum IcingaHostCheckResult
+{
+    UP = 0,
+    DOWN = 1,
+    UNREACHABLE = 2
+}
+'@
+}
+
+function NewIcingaServiceCheckResultEnumDefinition {
+[CmdletBinding()]
+param()
+    @'
+public enum IcingaServiceCheckResult
+{
+    OK = 0,
+    WARNING = 1,
+    CRITICAL = 2,
+    UNKNOWN = 3
+}
+'@
+}
+
 function AddIcingaEnum {
 [CmdletBinding()]
 param(
@@ -1281,10 +1308,159 @@ param(
     }
 }
 
+function Submit-IcingaCheckResult {
+[CmdletBinding(SupportsShouldProcess,DefaultParameterSetName='Host')]
+param(
+    [Parameter(
+        Mandatory
+    )]
+    [Uri]
+    $IcingaUrl ,
+
+    [Parameter(
+        Mandatory,
+        ValueFromPipeline 
+    )]
+    [ValidateNotNullOrEmpty()]
+    [String[]]
+    $Host ,
+
+    [Parameter(
+        Mandatory,
+        ParameterSetName='Service'
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('Svc')]
+    [String[]]
+    $Service ,
+    
+<#    [Parameter(
+        Mandatory,
+        ParameterSetName='Host'
+    )]
+    [Parameter(
+        Mandatory,
+        ParameterSetName='Service'
+    )]
+    [int]
+    [Alias('plugin_state')]
+    $CheckResult ,
+#>
+
+    [Parameter(
+        Mandatory
+    )]
+    [ValidateNotNullOrEmpty()]
+    [Alias('plugin_output')]
+    [String]
+    $CheckOutput ,
+
+    [Parameter()]
+    [ValidateNotNullOrEmpty()]
+    [Alias('performance_data')]
+    [String]
+    $PerformanceData ,
+
+    [Parameter()]
+    [PSCredential]
+    $Credential ,
+
+    [Parameter()]
+    [Switch]
+    $SkipSslValidation
+)
+
+    Begin {
+        $params = @{
+            IcingaUrl = $IcingaUrl
+            SkipSslValidation = $SkipSslValidation
+            Data = @{
+                plugin_result = $CheckResult
+                plugin_output = $CheckOutput
+            }
+        }
+        if ($Credential) {
+            $params.Credential = $Credential
+        }
+    }
+
+    DynamicParam {            
+                    
+        # For blog width...            
+        # As you can see - also abusing splatting.            
+        # Here - to pass positional parameter TypeName            
+            
+        $Type = @(            
+            'Management.Automation.ParameterAttribute'            
+        )            
+        $Attributes = New-Object @Type            
+        $Attributes.ParameterSetName = "__AllParameterSets"            
+        $Attributes.Mandatory = $true  
+        $Type = @(            
+            'Collections.ObjectModel.Collection[Attribute]'            
+        )            
+        $AttributeCollection = New-Object @Type            
+        $AttributeCollection.Add($Attributes)
+        $AttributeCollection.Add((New-Object System.Management.Automation.AliasAttribute -ArgumentList @('plugin_state')))
+
+        Write-Verbose $PSCmdlet.ParameterSetName -Verbose
+
+        $DataType = switch ($PSCmdlet.ParameterSetName)
+        {
+            'Host' { [IcingaHostCheckResult] }
+            'Service' { [IcingaServiceCheckResult] }
+        }
+
+        $MyParameter = @{            
+            TypeName = 'Management.Automation.RuntimeDefinedParameter'            
+            ArgumentList = @(            
+                'CheckResult' <# name #>            
+                $DataType <# ParameterType #>            
+                , $AttributeCollection <# Attributes #>            
+            )            
+        }            
+        $Dynamic = New-Object @MyParameter            
+                        
+        $Type = @(            
+            'Management.Automation.RuntimeDefinedParameterDictionary'            
+        )            
+        $ParamDictionary = New-Object @Type            
+        $ParamDictionary.Add("CheckResult", $Dynamic)            
+        $ParamDictionary            
+    }
+
+    Process {
+        foreach($hostname in $Host) {
+            if ($Service) {
+                $params.Command = [IcingaCommand]::CMD_PROCESS_SERVICE_CHECK_RESULT
+                foreach($svc in $Service) {
+                    Write-Verbose "Sending Service Check Result '$svc' on '$hostname'"
+                    $params.Data.hostservice = "$hostname^$svc"
+                    if ($PerformanceData) {
+                        $params.Data.performance_data = $PerformanceData
+                    }
+                    Invoke-IcingaCommand @params
+                }
+            } else {
+                $params.Command = [IcingaCommand]::CMD_PROCESS_HOST_CHECK_RESULT
+                Write-Verbose "Sending Host Check Result for '$hostname'"
+                $params.Data.host = $hostname
+                if ($PerformanceData) {
+                    $params.Data.performance_data = $PerformanceData
+                }
+                Invoke-IcingaCommand @params
+            }
+        }
+    }
+}
+
+
 AddIcingaEnum -Definition @(
     (NewIcingaCheckStateEnumDefinition)
     (NewIcingaCmdEnumDefinition)
     (NewIcingaHostChildOptionsEnumDefinition)
+    (NewIcingaHostCheckResultEnumDefinition)
+    (NewIcingaServiceCheckResultEnumDefinition)
 )
 
 AddSSLValidator
