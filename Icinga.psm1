@@ -1334,19 +1334,6 @@ param(
     [String[]]
     $Service ,
     
-<#    [Parameter(
-        Mandatory,
-        ParameterSetName='Host'
-    )]
-    [Parameter(
-        Mandatory,
-        ParameterSetName='Service'
-    )]
-    [int]
-    [Alias('plugin_state')]
-    $CheckResult ,
-#>
-
     [Parameter(
         Mandatory
     )]
@@ -1385,11 +1372,6 @@ param(
     }
 
     DynamicParam {            
-                    
-        # For blog width...            
-        # As you can see - also abusing splatting.            
-        # Here - to pass positional parameter TypeName            
-            
         $Type = @(            
             'Management.Automation.ParameterAttribute'            
         )            
@@ -1402,8 +1384,6 @@ param(
         $AttributeCollection = New-Object @Type            
         $AttributeCollection.Add($Attributes)
         $AttributeCollection.Add((New-Object System.Management.Automation.AliasAttribute -ArgumentList @('plugin_state')))
-
-        Write-Verbose $PSCmdlet.ParameterSetName -Verbose
 
         $DataType = switch ($PSCmdlet.ParameterSetName)
         {
