@@ -1357,20 +1357,6 @@ param(
     $SkipSslValidation
 )
 
-    Begin {
-        $params = @{
-            IcingaUrl = $IcingaUrl
-            SkipSslValidation = $SkipSslValidation
-            Data = @{
-                plugin_result = $CheckResult
-                plugin_output = $CheckOutput
-            }
-        }
-        if ($Credential) {
-            $params.Credential = $Credential
-        }
-    }
-
     DynamicParam {            
         $Type = @(            
             'Management.Automation.ParameterAttribute'            
@@ -1409,6 +1395,19 @@ param(
         $ParamDictionary            
     }
 
+    Begin {
+        $params = @{
+            IcingaUrl = $IcingaUrl
+            SkipSslValidation = $SkipSslValidation
+            Data = @{
+                plugin_output = $CheckOutput
+            }
+        }
+        if ($Credential) {
+            $params.Credential = $Credential
+        }
+    }
+
     Process {
         foreach($hostname in $Host) {
             if ($Service) {
@@ -1418,6 +1417,7 @@ param(
                     $params.Data.hostservice = "$hostname^$svc"
                     if ($PerformanceData) {
                         $params.Data.performance_data = $PerformanceData
+                        $params.Data.plugin_result = $CheckResult
                     }
                     Invoke-IcingaCommand @params
                 }
@@ -1427,6 +1427,7 @@ param(
                 $params.Data.host = $hostname
                 if ($PerformanceData) {
                     $params.Data.performance_data = $PerformanceData
+                    $params.Data.plugin_result = $CheckResult
                 }
                 Invoke-IcingaCommand @params
             }
