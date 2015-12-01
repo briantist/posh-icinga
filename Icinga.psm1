@@ -1406,6 +1406,8 @@ param(
         if ($Credential) {
             $params.Credential = $Credential
         }
+
+        $CheckResult = $PSBoundParameters.CheckResult.value__
     }
 
     Process {
@@ -1415,9 +1417,9 @@ param(
                 foreach($svc in $Service) {
                     Write-Verbose "Sending Service Check Result '$svc' on '$hostname'"
                     $params.Data.hostservice = "$hostname^$svc"
+                    $params.Data.plugin_state = $CheckResult
                     if ($PerformanceData) {
                         $params.Data.performance_data = $PerformanceData
-                        $params.Data.plugin_result = $CheckResult
                     }
                     Invoke-IcingaCommand @params
                 }
@@ -1425,9 +1427,9 @@ param(
                 $params.Command = [IcingaCommand]::CMD_PROCESS_HOST_CHECK_RESULT
                 Write-Verbose "Sending Host Check Result for '$hostname'"
                 $params.Data.host = $hostname
+                $params.Data.plugin_state = $CheckResult
                 if ($PerformanceData) {
                     $params.Data.performance_data = $PerformanceData
-                    $params.Data.plugin_result = $CheckResult
                 }
                 Invoke-IcingaCommand @params
             }
